@@ -144,3 +144,45 @@ The suite fakes every upstream, so it runs offline and never spends quota. It
 covers auth, fallback order, cooldown, streaming passthrough, junk-stream
 fallback, the model catalogue, the setup card, and that the original
 `/health` + `/api/*` routes still work.
+
+---
+
+## Railway deploy troubleshooting
+
+### `secret npm not found` — the build never sees your code
+
+Railway skips Nixpacks when a service variable looks like a build/start command,
+and it splits on the first space. A variable named `npm run setup` therefore makes
+it try to run the program `npm` with `run setup`... hence *"secret npm not found"*.
+
+- **Fix:** Variables tab → open the variable literally named
+  `npm run setup` → **delete it**. Commands belong in `package.json` scripts or
+  `railway.json`, never in a variable *name*.
+- Check the rest of the list while you're there: keys should be
+  `GATEWAY_TOKEN`, `GROQ_API_KEY`, `GEMINI_API_KEY`… with values only in the
+  right-hand column.
+- Also check **Settings → Build → Builder**. If it says `Railpack`, this repo's
+  `railway.json` (which asks for Nixpacks) is being ignored — switch it to
+  `Nixpacks`, or keep Railpack and delete `railway.json`.
+
+### `Deployed via GitHub: <someone-else>/backend`
+
+That card names the repo Railway builds from. If it is not
+`Lovelycrxshx/backend-`, the service is deploying a **different repository**, so
+nothing in this PR can reach it. Fix: **Settings → Source → Change Repo** →
+`Lovelycrxshx/backend-`, branch `main`, then merge this PR so `main` contains
+`src/gateway.js`.
+
+A quick way to tell: after a successful deploy, `GET /` should list
+`/v1/chat/completions` in `routes`.
+
+### Sanity check the build locally
+
+```bash
+rm -rf /tmp/check && mkdir /tmp/check && git archive HEAD | tar -x -C /tmp/check
+cd /tmp/check && npm ci && PORT=3000 GATEWAY_TOKEN=test npm start
+# then: curl -s localhost:3000/
+```
+
+`npm ci` is what the builder runs; if that succeeds, a build failure is
+almost always variables or the source repo, not the code.
