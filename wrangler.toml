@@ -1,0 +1,9 @@
+# Deploy the same app to Cloudflare Workers later:
+#   npx wrangler deploy
+# Then set secrets: npx wrangler secret put GATEWAY_TOKEN   (and provider keys)
+name = "free-llm-gateway"
+main = "src/app.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+PROVIDER_ORDER = "gemini,groq,openrouter,ovhcloud,llm7"
