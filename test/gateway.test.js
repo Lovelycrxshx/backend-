@@ -262,3 +262,15 @@ test('streaming a real upstream SSE keeps content chunks byte-identical', async 
   const text = await res.text();
   assert.equal(text, upstream);
 });
+
+test('/setup carries a working in-page probe (posts to /v1/chat/completions)', async () => {
+  const res = await app.fetch(new Request('http://local/setup'));
+  const html = await res.text();
+  assert.match(html, /async function probe\(/);
+  assert.match(html, /'\/v1\/chat\/completions'/);
+  assert.match(html, /x-gateway-provider/);
+  assert.equal(html.includes('alpha-key'), false);
+  // the page must not hard-code any secret into the script
+  const script = html.split('<script>')[1] ?? '';
+  assert.equal(/Bearer\s+[A-Za-z0-9]{12,}/.test(script), false);
+});
