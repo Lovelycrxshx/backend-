@@ -97,6 +97,14 @@ setup.get('/', (c) => {
 </div>
 
 <div class="card">
+  <h2>Test it from this phone</h2>
+  <p style="font-size:.82rem">Paste your token and send one real message. You'll see which provider answered, or exactly why each one refused.</p>
+  <div class="row"><input id="tok" type="password" placeholder="paste GATEWAY_TOKEN" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;background:transparent;border:0;color:var(--text);font:inherit;min-width:0"><button onclick="probe()">Test</button></div>
+  <p id="verdict" style="font-size:.9rem"></p>
+  <pre id="probe-out" class="mono" style="white-space:pre-wrap;font-size:.78rem;background:#0a0f1c;border:1px solid var(--line);border-radius:12px;padding:10px;display:none;overflow-x:auto"></pre>
+</div>
+
+<div class="card">
   <h2>2. ${esc(app.name)} on Android</h2>
   <ol>${app.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
   <p><a href="${esc(app.url)}">Download ${esc(app.name)}</a></p>
@@ -131,6 +139,45 @@ function cp(id) {
     () => { el.textContent = 'copied ✓'; setTimeout(() => location.reload(), 800); },
     () => alert(el.textContent.trim())
   );
+}
+
+// One real request straight from the phone, so the deploy is proven end to end.
+async function probe() {
+  const out = document.getElementById('probe-out');
+  const verdict = document.getElementById('verdict');
+  const tok = (document.getElementById('tok').value || '').trim();
+  if (!tok) { verdict.textContent = 'Paste your gateway token first.'; return; }
+  verdict.textContent = 'Asking the gateway…';
+  out.style.display = 'block';
+  out.textContent = '';
+  const started = Date.now();
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ model: 'auto', messages: [{ role: 'user', content: 'Reply with exactly: gateway ok' }], max_tokens: 24 }),
+    });
+    const ms = Date.now() - started;
+    const text = await res.text();
+    let body; try { body = JSON.parse(text); } catch { body = text; }
+    const provider = res.headers.get('x-gateway-provider');
+    const model = res.headers.get('x-gateway-model');
+    if (res.ok) {
+      const reply = body?.choices?.[0]?.message?.content ?? '(empty reply)';
+      verdict.innerHTML = '<span style="color:var(--accent)">✓ Working</span> — ' + (provider ? 'answered by <b>' + provider + '</b> (' + model + ')' : 'answered') + ' in ' + ms + ' ms';
+      out.textContent = reply + '\n\n--- raw ---\n' + text.slice(0, 1200);
+    } else if (res.status === 401) {
+      verdict.innerHTML = '<span style="color:var(--warn)">Token rejected</span> — it must match GATEWAY_TOKEN exactly.';
+      out.textContent = text.slice(0, 600);
+    } else {
+      const attempts = body?.error?.attempts ?? body?.attempts ?? [];
+      verdict.innerHTML = '<span style="color:var(--warn)">No provider answered (' + res.status + ')</span> — see the per-provider reasons below.';
+      out.textContent = (body?.error?.message ?? text.slice(0, 400)) + '\n\n' +
+        attempts.map((a) => '• ' + a.provider + (a.model ? ' / ' + a.model : '') + ': ' + (a.error ?? ('HTTP ' + a.status))).join('\n');
+    }
+  } catch (err) {
+    verdict.innerHTML = '<span style="color:var(--warn)">Request never reached the gateway</span> — ' + err.message;
+  }
 }
 </script>
 </body></html>`;
