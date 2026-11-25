@@ -186,3 +186,46 @@ cd /tmp/check && npm ci && PORT=3000 GATEWAY_TOKEN=test npm start
 
 `npm ci` is what the builder runs; if that succeeds, a build failure is
 almost always variables or the source repo, not the code.
+
+---
+
+## Deploy checklist (Railway, from a phone)
+
+"Unexposed service" means Railway built something but gave it **no public URL**.
+And the commit line on the deployment card tells you *which repo* was built —
+if it isn't `Lovelycrxshx/backend-`, the gateway isn't in what's running.
+
+### A. New service (recommended — keeps kuro.tv untouched)
+
+1. Project → **+ New** → **GitHub Repo** → `Lovelycrxshx/backend-` → branch `main`.
+2. Wait for **Deployment successful**.
+3. **Settings → Networking → Generate Domain.** That URL is your gateway host.
+4. **Variables** → add `GATEWAY_TOKEN`, `GROQ_API_KEY`, `GEMINI_API_KEY`
+   (a variable change triggers a redeploy).
+5. Open `https://<domain>/` — `routes` must list `/v1/chat/completions`.
+6. Open `https://<domain>/setup` on the phone and copy the values into the app.
+
+The app already binds `0.0.0.0` and reads Railway's injected `PORT`, so no
+start-command override is needed. Do **not** add a variable named like a command
+(`npm start`, `npm run ...`) — see the `secret npm not found` note above.
+
+### B. Reuse the existing service
+
+Only do this if the kuro.tv server in `lvaabhshek29-cmyk/backend` no longer
+matters: **Settings → Source → Change Repo** → `Lovelycrxshx/backend-` / `main`,
+then **Networking → Generate Domain**.
+
+### C. Keep the kuro.tv service AND that repo
+
+Add this repo's `src/gateway.js`, `src/providers.js`, `src/env.js`,
+`src/setup.js`, plus the `app.route('/v1', gateway)` line and `hono` dependency
+into the kuro repo, then redeploy it. That repo is not accessible to this
+session (GitHub 404), so it has to be done where you have write access.
+
+### Verify
+
+```bash
+curl -s https://<domain>/                       # routes[] includes /v1/chat/completions
+curl -s https://<domain>/v1                     # configured_providers: ["groq","gemini",...]
+curl -s https://<domain>/v1/models -H "Authorization: Bearer $GATEWAY_TOKEN"
+```
