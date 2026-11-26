@@ -1,17 +1,23 @@
 {
   "name": "backend",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test test/*.test.js",
-    "setup:token": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    "setup:token": "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+    "ofm": "node vendor/dsh-our-free-model/packages/standalone/cli.mjs",
+    "ofm:check": "node -e \"import('./src/ofm.js').then(async m=>{const s=await m.startOfm();console.log(s);console.log('models:',(await m.ofmModels()).length)})\"",
+    "postinstall": "node scripts/ofm-fetch.mjs",
+    "ofm:fetch": "OFM_REF=${OFM_REF:-} node scripts/ofm-fetch.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14",
     "@hono/node-server": "^1.13.7"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

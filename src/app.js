@@ -5,6 +5,8 @@ import { cors } from 'hono/cors';
 import { env } from './env.js';
 import { gateway } from './gateway.js';
 import { setup } from './setup.js';
+import { ofmHealthy, ofmStatus } from './ofm.js';
+import { ofmProxy } from './ofm-proxy.js';
 
 const app = new Hono();
 
@@ -17,15 +19,24 @@ app.use('*', cors({
 app.get('/', (c) => c.json({
   ok: true,
   service: 'backend',
-  routes: ['/health', '/api/ping', '/api/items', '/v1/chat/completions', '/v1/models', '/v1/providers', '/v1', '/setup'],
+  routes: ['/health', '/api/ping', '/api/items', '/v1/chat/completions', '/v1/models', '/v1/providers', '/v1', '/setup', '/ofm'],
 }));
 
-app.get('/health', (c) => c.json({
-  status: 'healthy',
-  version: '1.1.0',
-  uptime: Math.round(typeof process !== 'undefined' && process.uptime ? process.uptime() : 0),
-  time: new Date().toISOString(),
-}));
+app.get('/health', async (c) => {
+  const ofm = ofmStatus();
+  return c.json({
+    status: 'healthy',
+    version: '1.2.0',
+    uptime: Math.round(typeof process !== 'undefined' && process.uptime ? process.uptime() : 0),
+    time: new Date().toISOString(),
+    ofm: { ...ofm, healthy: ofm.running ? await ofmHealthy() : false },
+  });
+});
+
+// --- the vendored dsh-our-free-model standalone service ---------------------
+// It binds loopback itself and fences its console to same-origin loopback
+// callers, so this route reports status only — it is not a public proxy.
+app.get('/ofm', (c) => c.json(ofmStatus()));
 
 app.get('/api/ping', (c) => c.json({ pong: true, echo: c.req.query('echo') ?? null }));
 
@@ -71,6 +82,9 @@ app.route('/v1', gateway);
 
 // --- phone-friendly setup card: open /setup on the Android device ---
 app.route('/setup', setup);
+
+// --- inference-only proxy to the vendored our-free-model service (loopback) ---
+app.route('/ofm', ofmProxy);
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
 app.onError((err, c) => {

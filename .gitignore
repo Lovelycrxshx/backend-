@@ -4,3 +4,7 @@ node_modules/
 !.env.example
 npm-debug.log*
 .DS_Store
+
+# our-free-model standalone service data (holds its forwardKey + channel creds)
+.ofm/
+vendor/dsh-our-free-model/

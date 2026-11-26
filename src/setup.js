@@ -3,6 +3,7 @@
 import { Hono } from 'hono';
 import { env } from './env.js';
 import { PROVIDERS, resolveProviders } from './providers.js';
+import { ofmHealthy, ofmKey, ofmModels, ofmStatus } from './ofm.js';
 
 export const setup = new Hono();
 
@@ -44,9 +45,14 @@ const pick = {
   },
 };
 
-setup.get('/', (c) => {
+setup.get('/', async (c) => {
   const getEnv = (k) => env(c, k);
+  const ofm = ofmStatus();
+  const ofmUp = ofm.hasKey && await ofmHealthy();
+  const ofmModelsList = ofmUp ? await ofmModels() : [];
+  const ofmKeyValue = ofmKey();
   const base = `${publicBase(c)}/v1`;
+  const ofmBase = `${publicBase(c)}/ofm/v1`;
   const active = resolveProviders(getEnv);
   const app = pick[(getEnv('SETUP_APP') ?? 'chatt').toLowerCase()] ?? pick.chatt;
 
@@ -96,6 +102,17 @@ setup.get('/', (c) => {
   <p style="font-size:.82rem">The key is the <code>GATEWAY_TOKEN</code> value set on the server. It is never shown here — get it from your host's env vars.</p>
 </div>
 
+${ofmModelsList.length ? `<div class="card">
+  <h2>Our Free Model — no key of your own needed</h2>
+  <p>This server also runs the standalone <code>dsh-our-free-model</code> service, whose models need no account. Point the app at the same host but the <code>/ofm/v1</code> base URL:</p>
+  <div class="row"><code id="ofmbase">${esc(ofmBase)}</code><button onclick="cp('ofmbase')">Copy</button></div>
+  <div class="row"><code id="ofmkey">${esc(ofmKeyValue ?? '')}</code><button onclick="cp('ofmkey')">Copy key</button></div>
+  <p style="font-size:.82rem">Key is the standalone service's own <code>forwardKey</code>, read from this server's data directory. Pick any model id below.</p>
+  <table><thead><tr><th>Model id</th><th>Context</th></tr></thead><tbody>
+    ${ofmModelsList.map((m) => `<tr><td><code>${esc(m.id)}</code></td><td>${m.context ? `${Math.round(m.context / 1024)}k` : '—'}</td></tr>`).join('')}
+  </tbody></table>
+</div>` : `<div class="warn">The bundled <code>dsh-our-free-model</code> service is not running yet${ofm.error ? ` (${esc(ofm.error)})` : ''}. It starts automatically with the server; reload this page in a few seconds.</div>`}
+
 <div class="card">
   <h2>2. ${esc(app.name)} on Android</h2>
   <ol>${app.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
@@ -142,6 +159,7 @@ setup.get('/cheatsheet', (c) => {
   const getEnv = (k) => env(c, k);
   const active = resolveProviders(getEnv);
   const base = `${publicBase(c)}/v1`;
+  const ofmBase = `${publicBase(c)}/ofm/v1`;
   return c.text(
     [
       `Base URL (any OpenAI-compatible app): ${base}`,
