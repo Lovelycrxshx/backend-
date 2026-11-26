@@ -70,3 +70,33 @@ the server runs. In an egress-restricted sandbox they are not, and every model
 answers `upstream request failed` / `ERR_TRANSPORT` — that is the network, not
 the code. `GET /ofm/v1/health` tells you the service is up; the model test in the
 console tells you which models your network exit can actually reach.
+
+## The URL that was 502 ("Sandbox not found")
+
+That page is the sandbox host, not this app: the preview URL dies whenever the
+sandbox is paused or recycled, and an idle sandbox is recycled routinely. Two
+ways to keep a URL your phone can open:
+
+**A. Keep this one awake, then reopen it.** The port is `8080` (dashboard) —
+reopening it in the browser wakes the sandbox and the preview rebinds. If the
+sandbox was fully recycled, its id is gone and the old URL cannot be revived;
+start the preview again from this session to get the new host.
+
+**B. Deploy it somewhere that stays up.** `Dockerfile` is the durable answer:
+`docker run -p 3000:3000 -p 8080:8080 -v ofm:/data <image>`, or Railway with the
+Dockerfile builder. Then the URL is yours and does not depend on a session.
+
+## Dashboard (port 8080)
+
+`node dashboard/server.js` (or `./scripts/dev.sh`) serves one phone-sized page:
+
+- status of both processes, bun, key and model count;
+- the exact base URL + key with copy buttons, sized for pasting into ChatterUI;
+- the live model list, tap to select;
+- a **Try it** box that streams a real chat turn (reasoning + answer, first-word
+  latency) — it posts to the same origin, so no CORS and no typing keys on a
+  phone keyboard.
+
+It is a *separate* listener from `src/index.js` on purpose: the browser only ever
+talks to port 8080, and it reaches the gateway on `127.0.0.1:3000` and the
+our-free-model service on `127.0.0.1:18900` server-side.

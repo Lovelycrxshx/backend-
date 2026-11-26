@@ -11,11 +11,12 @@
     "ofm": "node vendor/dsh-our-free-model/packages/standalone/cli.mjs",
     "ofm:check": "node -e \"import('./src/ofm.js').then(async m=>{const s=await m.startOfm();console.log(s);console.log('models:',(await m.ofmModels()).length)})\"",
     "postinstall": "node scripts/ofm-fetch.mjs",
-    "ofm:fetch": "OFM_REF=${OFM_REF:-} node scripts/ofm-fetch.mjs"
+    "ofm:fetch": "OFM_REF=${OFM_REF:-} node scripts/ofm-fetch.mjs",
+    "dashboard": "node dashboard/server.js"
   },
   "dependencies": {
-    "hono": "^4.6.14",
-    "@hono/node-server": "^1.13.7"
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14"
   },
   "engines": {
     "node": ">=20"

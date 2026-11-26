@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f19">
+<title>Free model gateway</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0f19; --card:#141a29; --line:#243047; --text:#e8edf7; --muted:#93a1bb; --accent:#6ee7b7; --warn:#fbbf24; --bad:#f87171; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:16px 14px calc(28px + env(safe-area-inset-bottom)); max-width:640px; margin:0 auto; }
+  h1 { font-size:1.3rem; margin:0 0 2px; }
+  h2 { font-size:.95rem; margin:0 0 10px; color:var(--text); }
+  .sub { color:var(--muted); font-size:.85rem; margin:0 0 14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin:0 0 12px; }
+  .row { display:flex; align-items:center; gap:8px; background:#0a0f1c; border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0; }
+  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; word-break:break-all; }
+  .row code { flex:1; color:var(--accent); }
+  button { font:inherit; background:var(--accent); color:#062014; border:0; border-radius:10px; padding:10px 14px; font-weight:700; font-size:.85rem; }
+  button.ghost { background:#1b2436; color:var(--text); border:1px solid var(--line); font-weight:600; }
+  button:disabled { opacity:.5; }
+  button:active { transform:scale(.985); }
+  .pills { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .pill { border:1px solid var(--line); border-radius:999px; padding:3px 9px; font-size:.72rem; color:var(--muted); }
+  .pill.ok { color:var(--accent); border-color:#245c46; }
+  .pill.bad { color:var(--bad); border-color:#5c2323; }
+  .models { display:flex; flex-direction:column; gap:6px; max-height:44vh; overflow:auto; -webkit-overflow-scrolling:touch; }
+  .model { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0d1322; }
+  .model.sel { border-color:var(--accent); background:#0f1d1a; }
+  .model small { color:var(--muted); font-size:.72rem; }
+  textarea, select { width:100%; font:inherit; font-size:.95rem; color:var(--text); background:#0a0f1c; border:1px solid var(--line); border-radius:12px; padding:11px 12px; resize:vertical; }
+  textarea { min-height:82px; }
+  .err { background:#2a1414; border:1px solid #5c2323; color:#fecaca; border-radius:12px; padding:10px 12px; font-size:.82rem; word-break:break-word; }
+  .warn { background:#2a2110; border:1px solid #5c4a17; color:#fde68a; border-radius:12px; padding:10px 12px; font-size:.82rem; }
+  #out { white-space:pre-wrap; word-break:break-word; font-size:.9rem; margin-top:10px; }
+  #think { white-space:pre-wrap; color:var(--muted); font-size:.8rem; margin-top:8px; max-height:22vh; overflow:auto; }
+  .meta { color:var(--muted); font-size:.75rem; margin-top:8px; }
+  .steps { padding-left:18px; margin:6px 0 0; color:var(--muted); font-size:.85rem; }
+  .steps li { margin:5px 0; }
+  .ttl { display:flex; justify-content:space-between; align-items:center; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; background:var(--bad); }
+  .dot.ok { background:var(--accent); }
+</style>
+</head>
+<body>
+<h1>Free model gateway</h1>
+<p class="sub">No account, no provider keys. Pick a model and talk to it.</p>
+
+<div class="card">
+  <div class="ttl"><h2>Status</h2><span class="pill" id="stamp">…</span></div>
+  <div id="status"></div>
+</div>
+
+<div class="card">
+  <h2>Connect an app</h2>
+  <div class="row"><code id="base">…</code><button class="ghost" onclick="cp('base')">Copy</button></div>
+  <div class="row"><code id="key">…</code><button onclick="cp('key')">Copy key</button></div>
+  <p class="sub" style="margin:10px 0 0">ChatterUI → API → Create Connection → Generic → Chat Completions. Endpoint is the base URL above; the app appends <code>/chat/completions</code>.</p>
+</div>
+
+<div class="card">
+  <h2>Models <small id="mcount" style="color:var(--muted);font-weight:400"></small></h2>
+  <div class="models" id="models"></div>
+  <div id="modelsErr"></div>
+</div>
+
+<div class="card">
+  <h2>Try it</h2>
+  <textarea id="prompt" placeholder="Ask the model something…">Say hello in five words.</textarea>
+  <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+    <button id="send" onclick="sendTurn()" style="flex:1">Send</button>
+    <button class="ghost" onclick="abortTurn()">Stop</button>
+  </div>
+  <div id="think"></div>
+  <div id="out"></div>
+  <div class="meta" id="meta"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+let selected = null;
+let effort = null;
+let controller = null;
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+async function cp(id) {
+  const el = $(id);
+  const text = el.textContent.trim();
+  try { await navigator.clipboard.writeText(text); el.dataset.old = el.textContent; el.textContent = 'copied ✓'; setTimeout(() => { el.textContent = el.dataset.old || text; }, 900); }
+  catch { selectText(el); }
+}
+function selectText(el) {
+  const range = document.createRange(); range.selectNodeContents(el);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/state', { cache: 'no-store' });
+    state = await res.json();
+  } catch (error) {
+    $('stamp').textContent = 'unreachable';
+    $('status').innerHTML = `<div class="err">${esc(error.message)}</div>`;
+    return;
+  }
+  const g = state.gateway ?? {};
+  const svc = state.service ?? {};
+  $('stamp').textContent = new Date().toLocaleTimeString();
+  $('status').innerHTML = `
+    <div class="pills">
+      <span class="pill ${g.up ? 'ok' : 'bad'}"><span class="dot ${g.up ? 'ok' : ''}"></span>gateway ${g.up ? 'up' : 'down'}</span>
+      <span class="pill ${svc.healthy || svc.running ? 'ok' : 'bad'}">free-model service ${svc.running ? (svc.healthy === false ? 'starting' : 'up') : 'down'}</span>
+      <span class="pill ${state.key ? 'ok' : 'bad'}">${state.key ? 'key ready' : 'no key yet'}</span>
+      <span class="pill">${(state.models || []).length} models</span>
+      ${svc.bun ? '<span class="pill ok">bun ok</span>' : '<span class="pill bad">bun missing</span>'}
+    </div>
+    ${g.up ? '' : '<div class="warn" style="margin-top:10px">The gateway process is not answering on loopback. Restart it with <code>npm start</code>.</div>'}
+    ${state.modelsError ? `<div class="err" style="margin-top:10px">${esc(state.modelsError)}</div>` : ''}`;
+
+  $('base').textContent = location.origin + (state.baseUrl || '/ofm/v1');
+  $('key').textContent = state.key || 'not written yet';
+
+  const models = state.models || [];
+  $('mcount').textContent = models.length ? `(${models.length})` : '';
+  if (!selected && models.length) selected = models[0].id;
+  $('models').innerHTML = models.map((m) => `
+    <div class="model ${m.id === selected ? 'sel' : ''}" onclick="pick('${esc(m.id)}')">
+      <span><code>${esc(m.id)}</code>${m.efforts ? `<br><small>thinking: ${esc(m.efforts.join(' / '))}</small>` : ''}</span>
+      <small>${m.context ? Math.round(m.context / 1024) + 'k' : ''}</small>
+    </div>`).join('') || '<div class="warn">No models listed. The service keeps a cached roster; restart it if this stays empty.</div>';
+  $('modelsErr').innerHTML = '';
+}
+
+function pick(id) { selected = id; effort = null; document.querySelectorAll('.model').forEach((el) => el.classList.toggle('sel', el.querySelector('code').textContent === id)); }
+
+async function sendTurn() {
+  const prompt = $('prompt').value.trim();
+  if (!prompt || !selected) return;
+  $('send').disabled = true; $('out').textContent = ''; $('think').textContent = ''; $('meta').textContent = 'waiting…';
+  controller = new AbortController();
+  try {
+    const res = await fetch('/api/test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: selected, prompt, effort }),
+      signal: controller.signal,
+    });
+    if (!res.ok) { const body = await res.json().catch(() => ({})); $('out').innerHTML = `<div class="err">${esc(body.error || res.status)}</div>`; $('meta').textContent = ''; return; }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (ev.type === 'delta') $('out').textContent += ev.text;
+          else if (ev.type === 'reasoning') $('think').textContent += ev.text;
+          else if (ev.type === 'start') $('meta').textContent = 'thinking…';
+          else if (ev.type === 'done') $('meta').textContent = `${ev.ms} ms total${ev.firstTokenMs !== null ? ` · ${ev.firstTokenMs} ms to first word` : ''}`;
+          else if (ev.type === 'error') $('out').innerHTML = `<div class="err">${esc(ev.message)}${ev.status ? ` (HTTP ${ev.status})` : ''}</div>`;
+        }
+      }
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') $('out').innerHTML = `<div class="err">${esc(error.message)}</div>`;
+  } finally {
+    $('send').disabled = false; controller = null;
+    if ($('meta').textContent === 'waiting…') $('meta').textContent = '';
+  }
+}
+function abortTurn() { if (controller) controller.abort(); }
+
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
