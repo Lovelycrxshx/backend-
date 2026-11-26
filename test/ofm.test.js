@@ -106,3 +106,59 @@ test('a missing key file degrades to 503 instead of crashing', async () => {
     fs.renameSync(`${stash}.bak`, stash);
   }
 });
+
+test('/ serves the phone dashboard on the same origin as the API', async () => {
+  const res = await bg('/', { headers: { Accept: 'text/html' } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+  const html = await res.text();
+  assert.match(html, /Free model gateway/);
+  // The page must not carry the key in its markup: it fetches it at runtime.
+  assert.doesNotMatch(html, new RegExp(KEY));
+});
+
+test('/?json=1 still returns the machine-readable route index', async () => {
+  const res = await bg('/?json=1');
+  const body = await res.json();
+  assert.equal(body.ok, true);
+  assert.ok(body.routes.includes('/ofm/v1/*'));
+});
+
+test('/api/state is same-origin state for the page, key included, models live', async () => {
+  const body = await (await bg('/api/state')).json();
+  assert.equal(body.baseUrl, '/ofm/v1');
+  assert.equal(body.key, KEY);
+  assert.equal(body.models[0].id, 'demo-model');
+  assert.equal(typeof body.service.running, 'boolean');
+});
+
+test('/api/test refuses an empty prompt and reports upstream failures as JSON', async () => {
+  const empty = await bg('/api/test', { method: 'POST', headers: auth(), body: JSON.stringify({ model: 'demo-model' }) });
+  assert.equal(empty.status, 400);
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: 'upstream boom' } }), { status: 500 });
+  try {
+    const failed = await bg('/api/test', { method: 'POST', headers: auth(), body: JSON.stringify({ model: 'demo-model', prompt: 'hi' }) });
+    assert.equal(failed.status, 502);
+    assert.match((await failed.json()).error, /upstream boom/);
+  } finally { globalThis.fetch = saved; }
+});
+
+test('/api/test streams a turn as SSE when the upstream answers', async () => {
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}\n\n'
+    + 'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'
+    + 'data: [DONE]\n\n',
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+  try {
+    const res = await bg('/api/test', { method: 'POST', headers: auth(), body: JSON.stringify({ model: 'demo-model', prompt: 'hi' }) });
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.match(text, /"type":"start"/);
+    assert.match(text, /"type":"reasoning","text":"hmm"/);
+    assert.match(text, /"type":"delta","text":"hello"/);
+    assert.match(text, /"type":"done"/);
+  } finally { globalThis.fetch = saved; }
+});

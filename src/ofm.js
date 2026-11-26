@@ -68,6 +68,8 @@ export const OFM = {
 let child = null;
 let lastError = null;
 let starting = null;
+/** Rendered by the dashboard route; the file is compiled in dashboard/server.js. */
+const DASHBOARD = path.join(HERE, '..', 'dashboard', 'index.html');
 
 export function ofmConfigured() {
   return OFM.enabled && fs.existsSync(CLI);
@@ -190,6 +192,15 @@ export async function ofmModels() {
   } catch {
     return [];
   }
+}
+
+/**
+ * The dashboard page, or null when it has not been built into this checkout.
+ * It is served from the same origin as the API so a phone can use it on a
+ * single public port — see the `/` route in app.js.
+ */
+export function dashboardHtml() {
+  try { return fs.readFileSync(DASHBOARD); } catch { return null; }
 }
 
 /** Is the child's own `/health` answering? Cheap, and never needs a key. */
